@@ -10,7 +10,7 @@ X_cpu = torch.linspace(-1.5, 1.5, 1000).unsqueeze(1)
 # Nasza docelowa funkcja
 y_cpu = torch.sin(70 * X_cpu) * torch.exp(X_cpu)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 X, y = X_cpu.to(device), y_cpu.to(device)
 
 # 2. DODATEK: CECHY FOURIERA
