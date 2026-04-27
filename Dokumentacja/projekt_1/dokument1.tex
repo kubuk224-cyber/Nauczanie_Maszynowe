@@ -1,0 +1,59 @@
+\documentclass[12pt,a4paper]{article}
+
+% Pakiety do obsługi języka polskiego i znaków
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[polish]{babel}
+
+% Pakiety matematyczne i graficzne
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{geometry}
+
+% Ustawienia marginesów
+\geometry{a4paper, margin=2.5cm}
+
+\title{Dokumentacja Optymalizacji Modelu CNN \\ dla Zbioru Danych MNIST}
+\author{Dokumentacja Techniczna PyTorch}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Wstęp}
+Niniejsza dokumentacja techniczna opisuje proces modyfikacji i strojenia (ang. \textit{tuning}) Konwolucyjnej Sieci Neuronowej (CNN) służącej do klasyfikacji obrazów ze zbioru MNIST. Celem podjętych działań było zastosowanie technik zapobiegających przeuczeniu, wyjaśnienie anomalii funkcji straty, osiągnięcie skuteczności (ang. \textit{accuracy}) na poziomie powyżej 99\% na zbiorze testowym oraz wizualizacja pomyłek modelu za pomocą macierzy błędów.
+
+\section{Zadanie 1: Regularyzacja L2 (Weight Decay)}
+Aby zapobiec zjawisku przeuczenia w modelach głębokich (np. klasie \texttt{Deep}), wprowadzono regularyzację L2. W bibliotece PyTorch realizuje się to poprzez dodanie parametru \texttt{weight\_decay} do optymalizatora.
+
+Regularyzacja L2 dodaje do standardowej funkcji straty $\mathcal{L}_0$ człon karzący za zbyt duże wagi, co można zapisać wzorem:
+$$ \mathcal{L} = \mathcal{L}_0 + \lambda \sum_{i} w_i^2 $$
+gdzie $\lambda$ to współczynnik siły regularyzacji (w naszym kodzie ustalony na np. $10^{-4}$), a $w_i$ to poszczególne wagi modelu. Ograniczenie wielkości wag zapobiega nadmiernemu dopasowywaniu się sieci do szumu obecnego w danych treningowych.
+
+\section{Zadanie 2: Różnica między Validation Loss a Train Loss}
+W początkowej fazie trenowania zauważono anomalię: strata na zbiorze walidacyjnym była niższa niż strata na zbiorze treningowym. Jest to bezpośredni wynik zastosowania warstwy \textbf{Dropout}.
+
+Warstwa Dropout podczas treningu wyzerowuje losowo wybraną frakcję neuronów z prawdopodobieństwem $p$. Operacja ta sztucznie "upośledza" sieć na etapie uczenia, co podnosi wartość \textit{Train Loss}. 
+Podczas ewaluacji (wywołanie \texttt{model.eval()}) na zbiorze walidacyjnym i testowym, mechanizm Dropout jest wyłączany. Model korzysta ze wszystkich wyuczonych wag jednocześnie, co skutkuje znacznie wyższą skutecznością i niższym błędem (\textit{Validation Loss}).
+
+\section{Zadanie 3: Optymalizacja modelu CNN ($>99\%$ Accuracy)}
+Aby przekroczyć próg 99\% poprawnych klasyfikacji na zbiorze testowym, wprowadzono następujące zmiany w architekturze \texttt{TunedCNN}:
+\begin{itemize}
+    \item \textbf{Zwiększenie liczby filtrów konwolucyjnych:} Pierwsza warstwa wyodrębnia 16 map cech (zamiast 2), a druga 32 (zamiast 4). Zwiększa to pojemność informacyjną modelu.
+    \item \textbf{Zmiana klasyfikatora liniowego:} Warstwy w pełni połączone (Dense) zostały dostosowane do rozmiaru tensora po operacjach \texttt{MaxPool2d}. Liczba neuronów w warstwie ukrytej wynosi 128.
+    \item \textbf{Zmiana optymalizatora:} Przejście ze stochastycznego spadku gradientu (SGD) na \textbf{Adam} (Adaptive Moment Estimation) ze współczynnikiem uczenia $\alpha = 0.001$, co znacząco przyspieszyło zbieżność.
+\end{itemize}
+
+\section{Zadanie 4: Macierz Błędów (Confusion Matrix)}
+Do szczegółowej oceny jakości klasyfikacji poszczególnych cyfr wygenerowano macierz błędów $C$, w której każdy element $C_{i,j}$ jest zdefiniowany jako liczba obserwacji z prawdziwej klasy $i$, które zostały sklasyfikowane przez model do klasy $j$.
+
+Dla problemu 10-klasowego (cyfry 0-9), diagonalna $C_{i,i}$ reprezentuje poprawnie rozpoznane próbki (\textit{True Positives}). Pozostałe elementy reprezentują pomyłki modelu. 
+Przykładowo, element $C_{3,5}$ przechowuje informację, ile razy sieć zobaczyła na obrazku cyfrę "3", ale błędnie uznała ją za "5". Wizualizacja macierzy za pomocą biblioteki \texttt{scikit-learn} pozwala szybko zidentyfikować cyfry najczęściej mylone ze sobą, co zwykle dotyczy par $(4,9)$ oraz $(7,1)$ z powodu podobieństwa ich odręcznych kształtów.
+
+\end{document}

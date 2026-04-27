@@ -1,0 +1,6 @@
+\babel@toc {polish}{}\relax 
+\contentsline {section}{\numberline {1}Wstęp}{2}{section.1}%
+\contentsline {section}{\numberline {2}Zadanie 1: Regularyzacja L2 (Weight Decay)}{2}{section.2}%
+\contentsline {section}{\numberline {3}Zadanie 2: Różnica między Validation Loss a Train Loss}{2}{section.3}%
+\contentsline {section}{\numberline {4}Zadanie 3: Optymalizacja modelu CNN ($>99\%$ Accuracy)}{2}{section.4}%
+\contentsline {section}{\numberline {5}Zadanie 4: Macierz Błędów (Confusion Matrix)}{3}{section.5}%
