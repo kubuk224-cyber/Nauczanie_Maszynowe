@@ -190,7 +190,7 @@ def plot_loss(train_loss, validation_loss, title):
     plt.close()
 
 
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = Perceptron().to(device)
 

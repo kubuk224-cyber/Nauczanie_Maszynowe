@@ -187,13 +187,13 @@ def plot_metrics(train_loss, validation_loss, train_acc, validation_acc, title):
 
 
 # Ustawienie urządzenia sprzętowego (GPU jeśli dostępne, inaczej CPU)
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Używane urządzenie: {device}\n")
 
 # Inicjalizacja modelu CNN na wybrane urządzenie
 model = CNN().to(device)
 
-optimizer = optim.SGD(model.parameters(), lr=model_args['lr'], momentum=model_args['momentum'])
+optimizer = optim.SGD(model.parameters(), lr=model_args['lr'], momentum=model_args['momentum'], weight_decay=1e-4)
 
 torch.manual_seed(model_args['seed'])
 
