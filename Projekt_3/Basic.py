@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
 
 # Parametry uczenia
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 EPOCHS = 30 # Zwiększyłem do 15, aby krzywa cosinusa LR wyglądała ciekawiej
 LEARNING_RATE = 0.003 # Zaczynamy od wyższego LR, bo scheduler będzie go zmniejszał
 DATA_DIR = './data'
@@ -95,7 +95,7 @@ def main():
     print(f"Używane urządzenie: {device}")
 
     # Przygotowanie Modelu
-    model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
     for param in model.parameters():
         param.requires_grad = False
     
@@ -106,7 +106,7 @@ def main():
     # 3. Lepszy Optymalizator (AdamW) i Scheduler LR
     criterion = nn.CrossEntropyLoss()
     # AdamW posiada lepszą regularyzację wagi (weight_decay), świetnie działa w wizji
-    optimizer = optim.AdamW(model.fc.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+    optimizer = optim.AdamW(model.fc.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
     # CosineAnnealing płynnie zmniejsza Learning Rate po cosinusoidzie w trakcie epok
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
