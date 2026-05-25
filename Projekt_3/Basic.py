@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,36 +9,96 @@ import matplotlib.pyplot as plt
 
 # Parametry uczenia
 BATCH_SIZE = 8
-EPOCHS = 30 # Zwiększyłem do 15, aby krzywa cosinusa LR wyglądała ciekawiej
-LEARNING_RATE = 0.003 # Zaczynamy od wyższego LR, bo scheduler będzie go zmniejszał
+EPOCHS = 7
+LEARNING_RATE = 3e-4
 DATA_DIR = './data'
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # 1. Definicja własnego szumu
 class AddGaussianNoise(object):
     def __init__(self, mean=0., std=0.1):
         self.std = std
         self.mean = mean
-        
+
     def __call__(self, tensor):
-        noise = torch.randn(tensor.size()) * self.std + self.mean
+        noise = torch.randn(tensor.size(), device=tensor.device) * self.std + self.mean
         return torch.clamp(tensor + noise, 0.0, 1.0)
 
-# 2. Augmentacja danych
-train_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.RandomRotation(degrees=30),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-    transforms.ToTensor(),
-    AddGaussianNoise(0., 0.05),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
 
-val_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+def get_data_loaders(data_dir, batch_size):
+    train_transforms = transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=25),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+        transforms.ToTensor(),
+        AddGaussianNoise(0., 0.05),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    val_transforms = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    dataset = datasets.ImageFolder(root=data_dir, transform=train_transforms)
+    classes = dataset.classes
+    print(f'Znalezione klasy: {classes}')
+
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    val_dataset.dataset.transform = val_transforms
+
+    num_workers = min(4, os.cpu_count() or 1)
+    pin_memory = DEVICE.type == 'cuda'
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
+
+    return train_loader, val_loader, classes, dataset
+
+
+def initialize_model(num_classes):
+    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+
+    for name, param in model.named_parameters():
+        if 'layer4' not in name and 'fc' not in name:
+            param.requires_grad = False
+
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Dropout(p=0.5),
+        nn.Linear(num_ftrs, 256),
+        nn.ReLU(inplace=True),
+        nn.Dropout(p=0.3),
+        nn.Linear(256, num_classes)
+    )
+
+    return model.to(DEVICE)
+
+
+def get_class_weights(dataset):
+    targets = torch.tensor(dataset.targets, dtype=torch.long)
+    class_counts = torch.bincount(targets)
+    weights = 1.0 / (class_counts.float() + 1e-8)
+    weights = weights / weights.sum() * len(class_counts)
+    return weights.to(DEVICE)
+
 
 def plot_training_history(history, epochs):
     """Funkcja do rysowania wykresów z przebiegu treningu"""
@@ -78,106 +139,93 @@ def plot_training_history(history, epochs):
     plt.close()
 
 def main():
-    print("Wczytywanie datasetu...")
-    full_dataset = datasets.ImageFolder(root=DATA_DIR, transform=train_transforms)
-    classes = full_dataset.classes
-    print(f"Znalezione klasy: {classes}")
+    print('Wczytywanie datasetu...')
+    train_loader, val_loader, classes, dataset = get_data_loaders(DATA_DIR, BATCH_SIZE)
 
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-    val_dataset.dataset.transform = val_transforms
+    model = initialize_model(len(classes))
+    print(f'Używane urządzenie: {DEVICE}')
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Używane urządzenie: {device}")
-
-    # Przygotowanie Modelu
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, len(classes))
-    model = model.to(device)
-
-    # 3. Lepszy Optymalizator (AdamW) i Scheduler LR
-    criterion = nn.CrossEntropyLoss()
-    # AdamW posiada lepszą regularyzację wagi (weight_decay), świetnie działa w wizji
-    optimizer = optim.AdamW(model.fc.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
-    # CosineAnnealing płynnie zmniejsza Learning Rate po cosinusoidzie w trakcie epok
+    class_weights = get_class_weights(dataset)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    optimizer = optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=LEARNING_RATE,
+        weight_decay=1e-3
+    )
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
-    # Słownik do śledzenia historii dla wykresów
     history = {'train_loss': [], 'val_loss': [], 'train_acc': [], 'val_acc': [], 'lr': []}
+    best_val_acc = 0.0
+    best_model_path = 'best_guitar_classifier.pth'
 
-    # Pętla Uczenia
-    print("\nRozpoczynamy trening...")
+    print('\nRozpoczynamy trening...')
     for epoch in range(EPOCHS):
-        # Faza Treningowa
         model.train()
         running_loss = 0.0
-        correct_train, total_train = 0, 0
-        
+        correct_train = 0
+        total_train = 0
+
         for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
+
+            running_loss += loss.item() * inputs.size(0)
+            _, predicted = torch.max(outputs, 1)
             total_train += labels.size(0)
             correct_train += (predicted == labels).sum().item()
-            
-        train_loss = running_loss / len(train_loader)
-        train_acc = 100 * correct_train / total_train
-        
-        # Faza Walidacyjna
+
+        train_loss = running_loss / total_train
+        train_acc = 100.0 * correct_train / total_train
+
         model.eval()
         val_loss = 0.0
-        correct_val, total_val = 0, 0
+        correct_val = 0
+        total_val = 0
+
         with torch.no_grad():
             for inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
+                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
-                val_loss += loss.item()
-                
-                _, predicted = torch.max(outputs.data, 1)
+                val_loss += loss.item() * inputs.size(0)
+                _, predicted = torch.max(outputs, 1)
                 total_val += labels.size(0)
                 correct_val += (predicted == labels).sum().item()
-                
-        val_loss = val_loss / len(val_loader)
-        val_acc = 100 * correct_val / total_val
-        
-        # Aktualny Learning Rate ZANIM zrobimy krok schedulera
+
+        val_loss = val_loss / total_val
+        val_acc = 100.0 * correct_val / total_val
         current_lr = optimizer.param_groups[0]['lr']
-        
-        # Zapisywanie metryk do wykresów
+
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
         history['train_acc'].append(train_acc)
         history['val_acc'].append(val_acc)
         history['lr'].append(current_lr)
-        
-        # Krok schedulera - modyfikacja LR na następną epokę
-        scheduler.step()
-        
-        print(f"Epoka [{epoch+1:02d}/{EPOCHS}] | LR: {current_lr:.6f} | "
-              f"Strata T/W: {train_loss:.4f}/{val_loss:.4f} | "
-              f"Dokładność T/W: {train_acc:.2f}% / {val_acc:.2f}%")
 
-    print("\nTrening zakończony pomyślnie!")
-    torch.save(model.state_dict(), "guitar_classifier.pth")
+        scheduler.step()
+
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save(model.state_dict(), best_model_path)
+            print(f'Nowy najlepszy model zapisany: {best_val_acc:.2f}%')
+
+        print(
+            f'Epoka [{epoch+1:02d}/{EPOCHS}] | LR: {current_lr:.6f} | '
+            f'Strata T/W: {train_loss:.4f}/{val_loss:.4f} | '
+            f'Dokładność T/W: {train_acc:.2f}% / {val_acc:.2f}%'
+        )
+
+    print('\nTrening zakończony pomyślnie!')
+    torch.save(model.state_dict(), 'guitar_classifier.pth')
     print("Zapisano model jako 'guitar_classifier.pth'")
-    
-    # Wywołanie funkcji rysującej na samym końcu
+    print(f'Najlepsza walidacyjna dokładność: {best_val_acc:.2f}%')
+
     plot_training_history(history, EPOCHS)
+
 
 if __name__ == '__main__':
     main()
