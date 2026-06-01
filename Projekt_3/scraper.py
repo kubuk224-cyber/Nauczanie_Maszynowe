@@ -4,7 +4,7 @@ import os
 import time
 from urllib.parse import urljoin
 
-BASE_URL = "https://www.thomann.pl/modele_t.html?marketingAttributes%5B%5D=EXCLUDE_BUNDLE&oa=pra&gk=GIEGTE&sp=solr_improved&cme=true&filter=true"
+BASE_URL = "https://www.thomann.pl/modele_lp.html?marketingAttributes%5B%5D=EXCLUDE_BUNDLE&feature-50402%5B%5D=None&gk=GIEGLP&sp=solr_improved_listing&cme=true&filter=true"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -58,7 +58,7 @@ while True:
     all_links.update(product_links)
 
     # ZABEZPIECZENIE: Pobiera na razie tylko 2 strony
-    if page >= 2:
+    if page >= 5:
         break
 
     time.sleep(1.5)
@@ -95,7 +95,7 @@ for idx, link in enumerate(all_links):
                             images.append(full_img)
 
         # ZMIANA TUTAJ: Pobieramy obraz z indeksu 1 (drugi) i 2 (trzeci)
-        for i, img_url in enumerate(images[1:3]):
+        for i, img_url in enumerate(images[1:4]):
             img_res = requests.get(img_url, headers=headers)
             
             if img_res.status_code == 200:

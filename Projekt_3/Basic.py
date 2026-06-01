@@ -74,7 +74,7 @@ def get_data_loaders(data_dir, batch_size):
 
 
 def initialize_model(num_classes):
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+    model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 
     for name, param in model.named_parameters():
         if 'layer4' not in name and 'fc' not in name:
