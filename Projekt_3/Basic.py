@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
-from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader, random_split
+from torchvision import transforms, models
+from torch.utils.data import DataLoader, random_split, Dataset
 import matplotlib.pyplot as plt
+from PIL import Image
 
 # Parametry uczenia
 BATCH_SIZE = 8
@@ -13,6 +14,9 @@ EPOCHS = 7
 LEARNING_RATE = 3e-4
 DATA_DIR = './data'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Skrypt wejdzie TYLKO do tych folderów, resztę zignoruje
+ALLOWED_CLASSES = ['Single_cut', 'Double_cut']
 
 # 1. Definicja własnego szumu
 class AddGaussianNoise(object):
@@ -23,6 +27,41 @@ class AddGaussianNoise(object):
     def __call__(self, tensor):
         noise = torch.randn(tensor.size(), device=tensor.device) * self.std + self.mean
         return torch.clamp(tensor + noise, 0.0, 1.0)
+
+# 2. Własny Dataset filtrujący foldery
+class RestrictedGuitarDataset(Dataset):
+    def __init__(self, root_dir, allowed_classes, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.classes = allowed_classes
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(allowed_classes)}
+        
+        self.image_paths = []
+        self.targets = [] # Wymagane do get_class_weights
+
+        for cls_name in allowed_classes:
+            cls_dir = os.path.join(root_dir, cls_name)
+            if not os.path.isdir(cls_dir):
+                print(f"Ostrzeżenie: Nie znaleziono folderu: {cls_dir}")
+                continue
+
+            for img_name in os.listdir(cls_dir):
+                if img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                    self.image_paths.append(os.path.join(cls_dir, img_name))
+                    self.targets.append(self.class_to_idx[cls_name])
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        image = Image.open(img_path).convert('RGB')
+        target = self.targets[idx]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, target
 
 
 def get_data_loaders(data_dir, batch_size):
@@ -43,14 +82,20 @@ def get_data_loaders(data_dir, batch_size):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    dataset = datasets.ImageFolder(root=data_dir, transform=train_transforms)
-    classes = dataset.classes
+    # Tworzymy osobne obiekty dla treningu i walidacji, aby transformacje nie nadpisywały się nawzajem
+    full_dataset_train = RestrictedGuitarDataset(root_dir=data_dir, allowed_classes=ALLOWED_CLASSES, transform=train_transforms)
+    full_dataset_val = RestrictedGuitarDataset(root_dir=data_dir, allowed_classes=ALLOWED_CLASSES, transform=val_transforms)
+    
+    classes = full_dataset_train.classes
     print(f'Znalezione klasy: {classes}')
 
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-    val_dataset.dataset.transform = val_transforms
+    train_size = int(0.8 * len(full_dataset_train))
+    val_size = len(full_dataset_train) - train_size
+    
+    # Używamy stałego seeda, by podział na subsety był identyczny dla obu wersji (Train i Val)
+    generator = torch.Generator().manual_seed(42)
+    train_dataset, _ = random_split(full_dataset_train, [train_size, val_size], generator=generator)
+    _, val_dataset = random_split(full_dataset_val, [train_size, val_size], generator=generator)
 
     num_workers = min(4, os.cpu_count() or 1)
     pin_memory = DEVICE.type == 'cuda'
@@ -70,7 +115,7 @@ def get_data_loaders(data_dir, batch_size):
         pin_memory=pin_memory
     )
 
-    return train_loader, val_loader, classes, dataset
+    return train_loader, val_loader, classes, full_dataset_train
 
 
 def initialize_model(num_classes):
@@ -101,7 +146,6 @@ def get_class_weights(dataset):
 
 
 def plot_training_history(history, epochs):
-    """Funkcja do rysowania wykresów z przebiegu treningu"""
     print("\nGenerowanie wykresów treningu...")
     epochs_range = range(1, epochs + 1)
     

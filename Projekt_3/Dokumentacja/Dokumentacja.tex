@@ -1,0 +1,117 @@
+\documentclass[12pt,a4paper]{article}
+
+% Pakiety podstawowe i językowe
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[polish]{babel}
+\usepackage{lmodern} % Wektorowe czcionki naprawiające błąd (Metric TFM file not found)
+
+% Pakiety graficzne, matematyczne i formatujące
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{xcolor}
+
+% Ustawienia strony i linków
+\geometry{a4paper, margin=2.5cm}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+\title{\textbf{Dokumentacja Projektu: Machine Learning w Klasyfikacji Elementów Gitarowych}}
+\author{Autor: kubuk224-cyber}
+\date{Czerwiec 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Wstęp i Cel Projektu}
+Niniejszy projekt koncentruje się na wykorzystaniu głębokich sieci konwolucyjnych (CNN) do automatycznej klasyfikacji atrybutów gitar elektrycznych na podstawie zdjęć. 
+
+Rozpoznawanie takich detali jak kształt korpusu (Single-cut vs Double-cut), rodzaj przetworników, marka (na podstawie kształtu główki) oraz rodzaj zastosowanego mostka wymaga zróżnicowanego podejścia do architektury modeli, technik augmentacji oraz inżynierii zbiorów danych. W ramach projektu zaimplementowano proces uczenia transferowego (ang. \textit{Transfer Learning}) z wykorzystaniem środowiska PyTorch.
+
+\section{Zbiór Danych (Dataset) i Augmentacja}
+
+\subsection{Pozyskiwanie Danych}
+Zbiór danych został pozyskany m.in. poprzez autorski skrypt \texttt{scraper.py}, pobierający wysokiej rozdzielczości zdjęcia ze stron sklepów muzycznych (np. Thomann). Struktura katalogów została dostosowana do specyfiki problemu:
+\begin{itemize}
+    \item Zdjęcia całych korpusów do klasyfikacji \textit{cutaway} i elektroniki.
+    \item Ciasne kadry na główki (headstock) do identyfikacji producenta.
+    \item Zbliżenia na mostki do rozróżniania systemów (m.in. \textit{Floyd Rose, Tremolo, Hardtail, Tune-o-matic}).
+\end{itemize}
+
+\subsection{Autorska klasa Data Loadera}
+Z racji współdzielenia folderu \texttt{./data} przez zdjęcia z różnych podproblemów, zaimplementowano niestandardową klasę dziedziczącą po \texttt{torch.utils.data.Dataset} (np. \texttt{GuitarBridgesDataset}). Pozwoliło to na selektywne wczytywanie tylko dozwolonych klas (np. \texttt{ALLOWED\_CLASSES}) i całkowite ignorowanie niechcianych podfolderów.
+
+\subsection{Transformacje i Augmentacja}
+Aby zapobiec zjawisku przeuczenia (overfittingu) przy ograniczonej liczbie zdjęć, zastosowano agresywną augmentację w locie (ang. \textit{on-the-fly augmentation}) przy użyciu modułu \texttt{torchvision.transforms}:
+\begin{itemize}
+    \item \textbf{RandomRotation:} Obrót o losowy kąt (od 15 do 30 stopni w zależności od modelu).
+    \item \textbf{RandomHorizontalFlip:} Odbicia lustrzane (z prawdopodobieństwem 50\%).
+    \item \textbf{ColorJitter:} Zmiany kontrastu i jasności, uodparniające model na różne warunki oświetleniowe.
+    \item \textbf{AddGaussianNoise:} Autorska klasa wstrzykująca szum Gaussa do tensora, symulująca gorszej jakości matryce fotograficzne.
+\end{itemize}
+Zbiór walidacyjny został pozbawiony powyższych transformacji (poza reskalowaniem do wymiarów wejściowych sieci oraz normalizacją do standardu ImageNet).
+
+\section{Architektura Sieci Neuronowych}
+
+Ze względu na różną ziarnistość detali, projekt wykorzystuje podejście wielomodelowe oparte o architekturę ResNet:
+
+\subsection{ResNet-18 dla makro-struktur}
+Do rozpoznawania kształtów korpusu (Single/Double cut), zastosowano lekką i szybką sieć \textbf{ResNet-18}. Główne kontury drewna są łatwo rozpoznawalne na wczesnych mapach cech, dlatego głębszy model stwarzałby jedynie niepotrzebne ryzyko szybkiego przeuczenia.
+
+\subsection{ResNet-50 dla mikro-detali}
+Przy zadaniach o wysokim stopniu trudności – takich jak rozpoznawanie rozmytego logo na główce gitary lub drobnych elementów mechanicznych (śruby blokujące we Floyd Rose w kontrze do standardowych siodełek we wibrato) – architektura została podmieniona na \textbf{ResNet-50}. 
+Sieć ta generuje aż 2048 cech wyjściowych przed warstwą w pełni połączoną (Fully Connected), co pozwala na skrupulatną analizę małych fragmentów obrazu.
+
+\section{Proces Trenowania i Optymalizacja}
+
+\subsection{Metryki i Funkcje Stracy}
+Jako funkcję celu zastosowano standardową stratę krzyżowej entropii (\texttt{CrossEntropyLoss}). 
+
+Początkowe eksperymenty z optymalizatorem SGD (\textit{Stochastic Gradient Descent}) zastąpiono nowoczesnym algorytmem \textbf{AdamW}. Połączenie adaptacyjnego tempa uczenia z ulepszoną regularyzacją wag (\texttt{weight\_decay = 1e-3}) znacząco zapobiegało degradacji wyników na zbiorze walidacyjnym dla pojemnych modeli (ResNet-50).
+
+\subsection{Harmonogram Szybkości Uczenia (LR Scheduler)}
+Wdrożono technikę \texttt{CosineAnnealingLR}. Pozwala ona na dynamiczne dostosowywanie parametru \textit{Learning Rate} zderzając szybkie poszukiwania ekstremum w pierwszych epokach z powolnym, płynnym (sinusoidalnym) wygaszaniem kroku w epokach końcowych, co pozwala "osiąść" w optymalnym minimum lokalnym.
+
+\begin{figure}[H]
+    \centering
+    % UWAGA: Upewnij się, że plik historia_mostki.png lub historia_gitar.png znajduje się w tym samym folderze co plik .tex!
+    \includegraphics[width=1\textwidth]{wykres_mostki.png}
+    \caption{Wykresy: Spadek straty (Loss), Dokładność (Accuracy) oraz krzywa Szybkości Uczenia (Learning Rate) podczas procesu trenowania ResNet-50.}
+    \label{fig:metrics}
+\end{figure}
+
+\section{Historia Rozwoju i Repo GitHub}
+Rozwój projektu został w pełni zewidencjonowany w systemie kontroli wersji Git (autor: \textit{kubuk224-cyber}). Poniższa tabela przedstawia kluczowe kamienie milowe projektu:
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}llp{8cm}@{}}
+    \toprule
+    \textbf{Data} & \textbf{Wiadomość Commita} & \textbf{Opis zmian} \\ \midrule
+    16 Maj 2026 & \textit{first work with guitar classifier} & Inicjalizacja środowiska i repozytorium. Podstawowy model. \\
+    16 Maj 2026 & \textit{increased epochs and increased dataset} & Rozbudowa początkowej bazy zdjęć i pierwsza runda strojenia hiperparametrów. \\
+    24 Maj 2026 & \textit{Changed into rasnet50 model)} & Ewolucja architektury z ResNet-18 na pojemniejszy model ResNet-50 dla większej skuteczności w detalach. \\
+    25 Maj 2026 & \textit{95\% validation on 7 epochs} & Osiągnięcie bardzo satysfakcjonującej celności klasyfikacji we wczesnym etapie treningu. \\
+    1 Cze 2026 & \textit{more dataset} & Skalowanie danych - wdrożenie zdjęć o wyższej jakości w celu dalszej stabilizacji modelu. \\
+    5 Cze 2026 & \textit{added guitar bridge ML} / \textit{added bridges} & Implementacja złożonego klasyfikatora mostków gitarowych ignorującego korpusy w locie (Custom Dataset). \\ \bottomrule
+    \end{tabular}
+    \caption{Kamienie milowe w rozwoju projektu klasyfikatora elementów gitarowych na podstawie repozytorium GitHub.}
+    \label{tab:commits}
+\end{table}
+
+\section{Wnioski}
+Zastosowanie architektury Pipeline (osobne modele dla korpusów i detali) pozwoliło wyeliminować problem utraty cech na skutek normalizacji obrazów wejściowych (kompresja do $224\times224$ px). Mechanizmy zabezpieczające takie jak sztuczny szum (Gaussian Noise), odpowiedni weight decay w AdamW oraz Cosine Annealing udowodniły swoją wartość osiągając nałożone cele projektu (powyżej 95\% trafności na walidacji). 
+
+\end{document}
