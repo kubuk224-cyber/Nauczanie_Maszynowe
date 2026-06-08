@@ -4,7 +4,7 @@ import os
 import time
 from urllib.parse import urljoin
 
-BASE_URL = "https://www.thomann.pl/modele_lp.html?feature-50402%5B%5D=None&marketingAttributes%5B%5D=EXCLUDE_BUNDLE&gk=GIEGLP&sp=solr_improved_listing&cme=true&filter=true"
+BASE_URL = "https://www.thomann.pl/modele_t.html"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
