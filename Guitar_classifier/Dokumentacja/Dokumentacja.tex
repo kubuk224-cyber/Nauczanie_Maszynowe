@@ -114,7 +114,7 @@ W trakcie prac nad kodem zidentyfikowano i wyeliminowano szereg krytycznych bł�
 \textbf{Rezultat:} Dostarczenie sieci znacznie większej ilości pikseli pozwoliło na błyskawiczny i spektakularny wzrost skuteczności, eliminując wcześniejsze problemy z brakiem widoczności detali. \textbf{To ulepszenie zaowocowało ostatecznymi wynikami na poziomie 95\% dla korpusów i aż 97\% dla mostków.}
 
 \section{Integracja i Rezultaty Końcowe}
-Ostateczny skrypt \texttt{finale.py} wczytuje niezależnie oba wyspecjalizowane modele. Dzięki ujednoliceniu rozdzielczości do $600\times600$ px, potok przetwarzania generuje prawidłowe, sprzężone odpowiedzi, które nanoszone są na analizowane zdjęcie.
+Ostateczny skrypt \texttt{finale.py} wczytuje niezależnie oba wyspecjalizowane modele. Dzięki ujednoliceniu rozdzielczości do $600\times600$ px, potok przetwarzania generuje prawidłowe, sprzężone odpowiedzi, które nanoszone są na analizowane zdjęcie.Natomiast z powodu ograniczonego datasetu i niewielkiej ilości klas, nie wszystkie modele gitar zostają rozpoznawane prawdilowo.
 
 \begin{figure}[H]
     \centering
@@ -124,6 +124,13 @@ Ostateczny skrypt \texttt{finale.py} wczytuje niezależnie oba wyspecjalizowane 
     \label{fig:wynik}
 \end{figure}
 
+\begin{figure}[H]
+    \centering
+    % Wstaw tutaj grafikę analizy wyplutą przez finale.py
+    \includegraphics[width=0.45\textwidth]{analiza_wynik4.png}
+    \caption{Wizualizacja graficzna końcowej predykcji połączonych modeli dla gitary nie będącej zdefiniowana w klasach. Wynik dla modelu jest niepoprawny.}
+    \label{fig:wynik}
+\end{figure}
 \section{Podsumowanie i Wnioski}
 Projekt udowodnił, że podział skomplikowanego zagadnienia wizyjnego na wyspecjalizowane pod-modele (modułowa architektura \textit{Pipeline}) pozwala na optymalne dopasowanie parametrów do konkretnego zadania. 
 
