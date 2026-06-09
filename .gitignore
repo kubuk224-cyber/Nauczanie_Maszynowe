@@ -1,2 +1,5 @@
 .venv/
 .vscode/settings.json
+best_guitar_classifier.pth
+best_bridge_classifier.pth
+guitar_classifier.pth
